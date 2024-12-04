@@ -1,0 +1,17 @@
+FROM golang:1.23.0
+
+RUN apt update && apt install xclip -y && apt-get install ripgrep -y 
+
+RUN useradd -ms /bin/bash docker
+
+USER docker
+
+WORKDIR /home/docker/workspace
+
+RUN go install github.com/air-verse/air@v1.61.1
+
+ENV PATH $PATH:/home/docker/.local/bin
+
+COPY . .
+
+CMD tail -f /dev/null
