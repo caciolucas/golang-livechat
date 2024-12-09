@@ -64,6 +64,7 @@ func main() {
 	router := gin.Default()
 
 	router.GET("/channels", api.ListChannels)
+	router.GET("/channels/:id/messages", api.ListMessages)
 
 	router.Run(":8080")
 	// http.HandleFunc("/ws", handleConnections)

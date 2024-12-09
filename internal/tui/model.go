@@ -1,43 +1,24 @@
 package tui
 
 import (
-	"encoding/json"
-	"fmt"
-	"log"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"golang.org/x/term"
-
-	"golang-chat/internal/models"
-	"net/http"
-	"os"
 
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/viewport"
+	"golang-chat/internal/models"
 )
 
 type model struct {
-	channelsList list.Model
+	channelsList   list.Model
+	chatHistory    viewport.Model
+	messageInput   textarea.Model
+	currentChannel *models.Channel
 }
 
-func fetchChannels() []models.Channel {
-	response, err := http.Get("http://localhost:8080/channels")
-	if err != nil {
-		fmt.Println("Error fetching channels: ", err)
-		os.Exit(1)
-	}
-	defer response.Body.Close()
-
-	var channels []models.Channel
-
-	err = json.NewDecoder(response.Body).Decode(&channels)
-
-	if err != nil {
-		fmt.Println("Error decoding JSON: ", err)
-		os.Exit(1)
-	}
-
-	return channels
+func (m model) Init() tea.Cmd {
+	return nil
 }
 
 func InitialModel() model {
@@ -48,41 +29,54 @@ func InitialModel() model {
 		items[i] = channels[i]
 	}
 
-	terminalWidth, terminalHeigh, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil {
-		log.Fatal("Error getting terminal size: ", err)
-	}
+	channelsList := list.New(
+		items, list.NewDefaultDelegate(), 0, 0,
+	)
+	channelsList.SetShowHelp(false)
+	channelsList.SetShowStatusBar(false)
+	channelsList.Title = "Available channels"
 
-	channelList := list.New(items, list.NewDefaultDelegate(), terminalWidth, terminalHeigh-1)
-	channelList.Title = "Channels"
-	channelList.SetShowStatusBar(true)
-	channelList.Styles.TitleBar = lipgloss.NewStyle().Border(lipgloss.NormalBorder())
+	messageInput := textarea.New()
+	messageInput.Placeholder = "Type your message here..."
+	messageInput.Prompt = ""
+	messageInput.ShowLineNumbers = false
+	messageInput.SetHeight(4)
 
-	// Return the model with the list
-	return model{
-		channelsList: channelList,
-	}
-}
+	chatHistory := viewport.New(0, 0)
+	m := model{channelsList: channelsList, chatHistory: chatHistory, messageInput: messageInput}
 
-func (m model) Init() tea.Cmd {
-	return nil
+	return m
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-
 	switch msg := msg.(type) {
 
 	case tea.KeyMsg:
-		m.channelsList, _ = m.channelsList.Update(msg)
 		switch msg.String() {
-		case "q":
+		case "ctrl+c":
 			return m, tea.Quit
+		case "enter":
+			if selectedChannel, ok := m.channelsList.SelectedItem().(models.Channel); ok {
+				m.currentChannel = &selectedChannel
+				messages := fetchMessages(selectedChannel.ID)
+				m.chatHistory.SetContent(formatMessages(messages))
+			}
+			m.messageInput.Focus()
 		}
+	case tea.WindowSizeMsg:
+		m = resizeTUI(m, msg)
 	}
 
-	return m, nil
+	var cmd tea.Cmd
+	m.channelsList, cmd = m.channelsList.Update(msg)
+	return m, cmd
 }
 
 func (m model) View() string {
-	return m.channelsList.View()
+	channelsList := channelListStyle.Render(m.channelsList.View())
+	chatHistory := chatHistoryStyle.Render(m.chatHistory.View())
+	messageInput := messageInputStyle.Render(m.messageInput.View())
+
+	chatHistoryAndInput := lipgloss.JoinVertical(lipgloss.Top, chatHistory, messageInput)
+	return lipgloss.JoinHorizontal(lipgloss.Top, channelsList, chatHistoryAndInput)
 }
