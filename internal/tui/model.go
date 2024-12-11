@@ -61,7 +61,6 @@ func InitialModel() model {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m = resizeTUI(m, msg)
@@ -86,6 +85,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.wsConnection.WriteJSON(message)
 				m.messageInput.Reset()
+			} else if msg.String() == "up" || msg.String() == "down" {
+				if msg.String() == "up" {
+					m.chatHistory.ViewUp()
+				}
+				if msg.String() == "down" {
+					m.chatHistory.ViewDown()
+				}
 			} else {
 				c, cmd := m.messageInput.Update(msg)
 				m.messageInput = c
@@ -109,7 +115,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.wsConnection = conn
 
-				go listenChannelWSMessages(m.channelsList.SelectedChannel, &m.chatHistory, &m)
+				go listenChannelWSMessages(&m)
 				return m, readIncomingMessages(m.incomingMessages)
 
 			} else {

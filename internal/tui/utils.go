@@ -66,7 +66,7 @@ func loadMessages(channel *models.Channel, vp *viewport.Model) {
 	setViewportContent(channel, vp)
 }
 
-func listenChannelWSMessages(channel *models.Channel, viewport *viewport.Model, m *model) {
+func listenChannelWSMessages(m *model) {
 	for {
 		mt, msg, err := m.wsConnection.ReadMessage()
 		if err != nil {
