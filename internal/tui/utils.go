@@ -3,14 +3,41 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
-	"golang-chat/internal/models"
-	"net/http"
+	"log"
 	"os"
 	"strings"
 
+	"golang-chat/internal/models"
+	"golang-chat/internal/services"
+	"golang-chat/internal/tui/styles"
+
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"go.mongodb.org/mongo-driver/bson/primitive"
+	"github.com/gorilla/websocket"
 )
+
+type NewMessageReceived struct {
+	Message models.Message
+}
+
+func resizeTUI(m model, msg tea.WindowSizeMsg) model {
+	frameWidth, frameHeight := styles.DocStyle.GetFrameSize()
+	terminalWidth, terminalHeight := msg.Width, msg.Height
+
+	listWidth := (terminalWidth - frameWidth) / 3
+	listHeight := terminalHeight - frameHeight
+	styles.ChannelListStyle = styles.ChannelListStyle.Width(listWidth).Height(listHeight)
+
+	chatHistoryWidth := (2 * (terminalWidth - frameWidth)) / 3
+	chatHistoryHeight := terminalHeight - frameHeight - 6
+	m.chatHistory.Width = chatHistoryWidth
+	m.chatHistory.Height = chatHistoryHeight
+	styles.ChatHistoryStyle = styles.ChatHistoryStyle.Width(chatHistoryWidth).Height(chatHistoryHeight)
+
+	m.messageInput.SetWidth((2 * (terminalWidth - frameWidth)) / 3)
+
+	return m
+}
 
 func formatMessages(messages []models.Message) string {
 	var builder strings.Builder
@@ -20,66 +47,64 @@ func formatMessages(messages []models.Message) string {
 	return builder.String()
 }
 
-func fetchMessages(channelID primitive.ObjectID) []models.Message {
-	response, err := http.Get(fmt.Sprintf("http://localhost:8080/channels/%s/messages", channelID.Hex()))
-
-	if err != nil {
-		fmt.Println("Error fetching messages: ", err)
-		os.Exit(1)
-	}
-	defer response.Body.Close()
-
-	var messages []models.Message
-
-	err = json.NewDecoder(response.Body).Decode(&messages)
-
-	if err != nil {
-		fmt.Println("Error decoding JSON: ", err)
-		os.Exit(1)
-	}
-
-	return messages
+func setViewportContent(channel *models.Channel, vp *viewport.Model) {
+	vp.SetContent(formatMessages(channel.Messages))
 }
 
-func fetchChannels() []models.Channel {
-	response, err := http.Get("http://localhost:8080/channels")
-	if err != nil {
-		fmt.Println("Error fetching channels: ", err)
-		os.Exit(1)
-	}
-	defer response.Body.Close()
-
-	var channels []models.Channel
-
-	err = json.NewDecoder(response.Body).Decode(&channels)
-
-	if err != nil {
-		fmt.Println("Error decoding JSON: ", err)
-		os.Exit(1)
+func loadMessages(channel *models.Channel, vp *viewport.Model) {
+	if channel == nil {
+		return
 	}
 
-	return channels
+	messages, err := services.FetchMessages(channel.ID)
+	channel.Messages = messages
+
+	if err != nil {
+		log.Fatalf("Error fetching messages: %v", err)
+	}
+
+	setViewportContent(channel, vp)
 }
 
-func resizeTUI(m model, msg tea.WindowSizeMsg) model {
-	frameWidth, frameHeight := docStyle.GetFrameSize()
-	terminalWidth, terminalHeight := msg.Width, msg.Height
+func listenChannelWSMessages(channel *models.Channel, viewport *viewport.Model, m *model) {
+	for {
+		mt, msg, err := m.wsConnection.ReadMessage()
+		if err != nil {
+			log.Fatalf("Error reading message: %v", err)
+		}
 
-	listWidth := (terminalWidth - frameWidth) / 3
-	listHeight := terminalHeight - frameHeight
-	m.channelsList.SetSize(listWidth, listHeight)
-	channelListStyle = channelListStyle.Width(listWidth).Height(listHeight)
+		if mt == websocket.TextMessage {
+			var message models.Message
+			if err := json.Unmarshal(msg, &message); err != nil {
+				log.Fatalf("Error unmarshalling message: %v", err)
+				continue
+			}
 
-	chatHistoryWidth := (2 * (terminalWidth - frameWidth)) / 3
-	chatHistoryHeight := terminalHeight - frameHeight - 6
-	m.chatHistory.Width = chatHistoryWidth
-	m.chatHistory.Height = chatHistoryHeight
-	chatHistoryStyle.Width(chatHistoryWidth).Height(chatHistoryHeight)
+			m.incomingMessages <- message
+		}
+	}
+}
 
-	m.messageInput.SetWidth((2 * (terminalWidth - frameWidth)) / 3)
+func readIncomingMessages(incoming chan models.Message) tea.Cmd {
+	return func() tea.Msg {
+		msg := <-incoming
+		return NewMessageReceived{Message: msg}
+	}
+}
 
-	// NOTE: For debugging porpuses, set the channel title as the dimensions of each element and used vars
-	m.channelsList.Title = fmt.Sprintf("Term: %dx%d, List: %dx%d, Chat: %dx%d, Frame: _x%d", terminalWidth, terminalHeight, listWidth, listHeight, chatHistoryWidth, chatHistoryHeight, frameHeight)
+// NOTE: Debug function, remove before production
+func LogToFile(data string) {
+	fileName := "debug.log"
+	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		fmt.Println("Error opening file: ", err)
+		os.Exit(1)
+	}
+	defer file.Close()
 
-	return m
+	if _, err := file.WriteString(data); err != nil {
+		fmt.Println("Error writing to file: ", err)
+		os.Exit(1)
+	}
+
 }

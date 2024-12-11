@@ -1,15 +1,17 @@
 package models
 
 import (
+	"fmt"
+
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type Channel struct {
-	ID   primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
-	Name string             `json:"name"`
+	ID       primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
+	Name     string             `json:"name"`
+	Messages []Message          `json:"messages"`
 }
 
-// Implement list.Item interface for models.Channel
-func (c Channel) Title() string       { return c.Name }
-func (c Channel) Description() string { return c.ID.Hex() }
-func (c Channel) FilterValue() string { return c.Name }
+func (c Channel) String() string {
+	return fmt.Sprintf("\"%s\" (%s)", c.Name, c.ID.Hex())
+}
