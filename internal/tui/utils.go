@@ -36,6 +36,13 @@ func resizeTUI(m model, msg tea.WindowSizeMsg) model {
 
 	m.messageInput.SetWidth((2 * (terminalWidth - frameWidth)) / 3)
 
+	styles.PromptStyle = styles.PromptStyle.Width(24).Margin(
+		(terminalHeight-frameHeight)/2,
+		((terminalWidth-frameWidth)-24)/2,
+	)
+	LogToFile(fmt.Sprintf("Terminal width: %d, Terminal height: %d\n", terminalWidth, terminalHeight))
+	LogToFile(fmt.Sprintf("Frame width: %d, Frame height: %d\n", frameWidth, frameHeight))
+
 	return m
 }
 

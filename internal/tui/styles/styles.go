@@ -17,6 +17,7 @@ var componentStyle = lipgloss.NewStyle().Border(border).
 var ChannelListStyle = componentStyle
 var ChatHistoryStyle = componentStyle
 var MessageInputStyle = componentStyle.Height(4)
+var PromptStyle = componentStyle
 
 // CHANNEL LIST STYLES
 var ActiveChannelStyle = lipgloss.NewStyle().

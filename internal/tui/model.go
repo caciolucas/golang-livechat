@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"golang-chat/internal/models"
 	"golang-chat/internal/services"
 	channellist "golang-chat/internal/tui/components/channelList"
@@ -8,6 +9,7 @@ import (
 	"log"
 
 	"github.com/charmbracelet/bubbles/textarea"
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -19,7 +21,9 @@ type model struct {
 	chatHistory    viewport.Model
 	messageInput   textarea.Model
 	currentChannel *models.Channel
+	prompt         textinput.Model
 
+	username         string
 	wsConnection     *websocket.Conn
 	incomingMessages chan models.Message
 }
@@ -49,17 +53,31 @@ func InitialModel() model {
 
 	chatHistory := viewport.New(0, 0)
 
+	prompt := textinput.New()
 	m := model{
 		channelsList:     channelsList,
 		chatHistory:      chatHistory,
 		messageInput:     messageInput,
 		incomingMessages: make(chan models.Message),
+		prompt:           prompt,
+		username:         "",
 	}
 
 	return m
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.username == "" {
+		m.prompt.Focus()
+		m.prompt.Placeholder = "Enter your username"
+		m.messageInput.Blur()
+		m.channelsList.Blur()
+	}
+	LogToFile("===== UPDATE =====\n")
+	LogToFile(fmt.Sprintf("MSG: %v\n", msg))
+	LogToFile(fmt.Sprintf("TYPE: %T\n", msg))
+	LogToFile("==================\n")
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m = resizeTUI(m, msg)
@@ -68,6 +86,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case NewMessageReceived:
 		m.channelsList.SelectedChannel.Messages = append(m.channelsList.SelectedChannel.Messages, msg.Message)
 		setViewportContent(m.channelsList.SelectedChannel, &m.chatHistory)
+
+		// Move to the bottom of the chat history
+		m.chatHistory.ViewDown()
 
 		return m, readIncomingMessages(m.incomingMessages)
 
@@ -78,7 +99,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.channelsList.Focus()
 			} else if msg.String() == "enter" {
 				message := models.Message{
-					Username: "test",
+					Username: m.username,
 					Message:  m.messageInput.Value(),
 					Channel:  m.channelsList.SelectedChannel.ID,
 				}
@@ -123,13 +144,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
+		if m.prompt.Focused() {
+			if msg.String() == "esc" || msg.String() == "ctrl+c" {
+				return m, tea.Quit
+			} else if msg.String() == "up" || msg.String() == "down" || msg.String() == "left" || msg.String() == "right" {
 
+				LogToFile(fmt.Sprintf("Prompt style margins %v %v %v %v\n", styles.PromptStyle.GetMarginTop(), styles.PromptStyle.GetMarginRight(), styles.PromptStyle.GetMarginBottom(), styles.PromptStyle.GetMarginLeft()))
+				if msg.String() == "up" {
+					styles.PromptStyle = styles.PromptStyle.Margin(styles.PromptStyle.GetMarginTop()+1, styles.PromptStyle.GetMarginRight())
+				}
+				if msg.String() == "down" {
+					styles.PromptStyle = styles.PromptStyle.Margin(styles.PromptStyle.GetMarginTop()-1, styles.PromptStyle.GetMarginRight())
+				}
+				if msg.String() == "left" {
+					styles.PromptStyle = styles.PromptStyle.Margin(styles.PromptStyle.GetMarginTop(), styles.PromptStyle.GetMarginRight()+1)
+				}
+				if msg.String() == "right" {
+					styles.PromptStyle = styles.PromptStyle.Margin(styles.PromptStyle.GetMarginTop(), styles.PromptStyle.GetMarginRight()-1)
+				}
+
+			} else if msg.String() == "enter" {
+				if m.username == "" {
+					m.username = m.prompt.Value()
+					m.prompt.Reset()
+					m.channelsList.Focus()
+				}
+				return m, nil
+			} else {
+				c, cmd := m.prompt.Update(msg)
+				m.prompt = c
+				return m, cmd
+			}
+		}
 	}
 
 	return m, nil
 }
 
 func (m model) View() string {
+	if m.username == "" {
+		return styles.PromptStyle.Render(m.prompt.View())
+	}
+
 	channelsList := styles.ChannelListStyle.Render(m.channelsList.View())
 	chatHistory := styles.ChatHistoryStyle.Render(m.chatHistory.View())
 	messageInput := styles.MessageInputStyle.Render(m.messageInput.View())
