@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
 	"golang-chat/internal/models"
@@ -18,6 +17,10 @@ import (
 
 type NewMessageReceived struct {
 	Message models.Message
+}
+
+type HostEntered struct {
+	Host string
 }
 
 func resizeTUI(m model, msg tea.WindowSizeMsg) model {
@@ -40,8 +43,6 @@ func resizeTUI(m model, msg tea.WindowSizeMsg) model {
 		(terminalHeight-frameHeight)/2,
 		((terminalWidth-frameWidth)-24)/2,
 	)
-	LogToFile(fmt.Sprintf("Terminal width: %d, Terminal height: %d\n", terminalWidth, terminalHeight))
-	LogToFile(fmt.Sprintf("Frame width: %d, Frame height: %d\n", frameWidth, frameHeight))
 
 	return m
 }
@@ -58,19 +59,19 @@ func setViewportContent(channel *models.Channel, vp *viewport.Model) {
 	vp.SetContent(formatMessages(channel.Messages))
 }
 
-func loadMessages(channel *models.Channel, vp *viewport.Model) {
+func loadMessages(channel *models.Channel, m *model) {
 	if channel == nil {
 		return
 	}
 
-	messages, err := services.FetchMessages(channel.ID)
+	messages, err := services.FetchMessages(channel.ID, m.host)
 	channel.Messages = messages
 
 	if err != nil {
 		log.Fatalf("Error fetching messages: %v", err)
 	}
 
-	setViewportContent(channel, vp)
+	setViewportContent(channel, &m.chatHistory)
 }
 
 func listenChannelWSMessages(m *model) {
@@ -92,26 +93,14 @@ func listenChannelWSMessages(m *model) {
 	}
 }
 
+func hostEntered(host string) tea.Cmd {
+	return func() tea.Msg {
+		return HostEntered{Host: host}
+	}
+}
 func readIncomingMessages(incoming chan models.Message) tea.Cmd {
 	return func() tea.Msg {
 		msg := <-incoming
 		return NewMessageReceived{Message: msg}
 	}
-}
-
-// NOTE: Debug function, remove before production
-func LogToFile(data string) {
-	fileName := "debug.log"
-	file, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Println("Error opening file: ", err)
-		os.Exit(1)
-	}
-	defer file.Close()
-
-	if _, err := file.WriteString(data); err != nil {
-		fmt.Println("Error writing to file: ", err)
-		os.Exit(1)
-	}
-
 }

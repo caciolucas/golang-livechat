@@ -1,7 +1,8 @@
 package tui
 
 import (
-	"fmt"
+	// "fmt"
+	// "golang-chat/internal"
 	"golang-chat/internal/models"
 	"golang-chat/internal/services"
 	channellist "golang-chat/internal/tui/components/channelList"
@@ -21,9 +22,11 @@ type model struct {
 	chatHistory    viewport.Model
 	messageInput   textarea.Model
 	currentChannel *models.Channel
-	prompt         textinput.Model
+	userPrompt     textinput.Model
+	hostPrompt     textinput.Model
 
 	username         string
+	host             string
 	wsConnection     *websocket.Conn
 	incomingMessages chan models.Message
 }
@@ -33,12 +36,7 @@ func (m model) Init() tea.Cmd {
 }
 
 func InitialModel() model {
-	channels, err := services.FetchChannels()
-	if err != nil {
-		log.Fatalf("Error fetching channels: %v", err)
-	}
-
-	channelsList := channellist.Model{Channels: channels}
+	channelsList := channellist.Model{}
 	channelsList.Focus()
 	channelsList.SetCursor(0)
 
@@ -53,14 +51,20 @@ func InitialModel() model {
 
 	chatHistory := viewport.New(0, 0)
 
-	prompt := textinput.New()
+	userPrompt := textinput.New()
+	userPrompt.Placeholder = "Enter your username"
+	hostPrompt := textinput.New()
+	hostPrompt.Placeholder = "Enter the host"
+
 	m := model{
 		channelsList:     channelsList,
 		chatHistory:      chatHistory,
 		messageInput:     messageInput,
 		incomingMessages: make(chan models.Message),
-		prompt:           prompt,
+		userPrompt:       userPrompt,
+		hostPrompt:       hostPrompt,
 		username:         "",
+		host:             "",
 	}
 
 	return m
@@ -68,27 +72,35 @@ func InitialModel() model {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.username == "" {
-		m.prompt.Focus()
-		m.prompt.Placeholder = "Enter your username"
+		m.userPrompt.Focus()
 		m.messageInput.Blur()
 		m.channelsList.Blur()
 	}
-	LogToFile("===== UPDATE =====\n")
-	LogToFile(fmt.Sprintf("MSG: %v\n", msg))
-	LogToFile(fmt.Sprintf("TYPE: %T\n", msg))
-	LogToFile("==================\n")
+	if m.host == "" {
+		m.hostPrompt.Focus()
+		m.messageInput.Blur()
+		m.channelsList.Blur()
+	}
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m = resizeTUI(m, msg)
 		return m, nil
 
-	case NewMessageReceived:
-		m.channelsList.SelectedChannel.Messages = append(m.channelsList.SelectedChannel.Messages, msg.Message)
-		setViewportContent(m.channelsList.SelectedChannel, &m.chatHistory)
+	case HostEntered:
+		channels, err := services.FetchChannels(m.host)
+		if err != nil {
+			log.Fatalf("Error fetching channels: %v", err)
+		}
+		m.channelsList.Channels = channels
+		return m, nil
 
-		// Move to the bottom of the chat history
-		m.chatHistory.ViewDown()
+	case NewMessageReceived:
+		if m.channelsList.SelectedChannel.ID == msg.Message.Channel {
+			m.channelsList.SelectedChannel.Messages = append(m.channelsList.SelectedChannel.Messages, msg.Message)
+			setViewportContent(m.channelsList.SelectedChannel, &m.chatHistory)
+			m.chatHistory.ViewDown()
+		}
 
 		return m, readIncomingMessages(m.incomingMessages)
 
@@ -127,9 +139,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.channelsList.Blur()
 
 				m.channelsList.SelectedChannel = &m.channelsList.Channels[m.channelsList.Cursor()]
-				loadMessages(m.channelsList.SelectedChannel, &m.chatHistory)
+				loadMessages(m.channelsList.SelectedChannel, &m)
 
-				conn, err := services.ConnectChannelWS(m.channelsList.SelectedChannel.ID)
+				conn, err := services.ConnectChannelWS(m.channelsList.SelectedChannel.ID, m.host)
 				if err != nil {
 					log.Fatalf("Error connecting to channel WS: %v", err)
 				}
@@ -144,35 +156,39 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
-		if m.prompt.Focused() {
+		if m.hostPrompt.Focused() {
 			if msg.String() == "esc" || msg.String() == "ctrl+c" {
 				return m, tea.Quit
-			} else if msg.String() == "up" || msg.String() == "down" || msg.String() == "left" || msg.String() == "right" {
-
-				LogToFile(fmt.Sprintf("Prompt style margins %v %v %v %v\n", styles.PromptStyle.GetMarginTop(), styles.PromptStyle.GetMarginRight(), styles.PromptStyle.GetMarginBottom(), styles.PromptStyle.GetMarginLeft()))
-				if msg.String() == "up" {
-					styles.PromptStyle = styles.PromptStyle.Margin(styles.PromptStyle.GetMarginTop()+1, styles.PromptStyle.GetMarginRight())
+			} else if msg.String() == "enter" {
+				if m.host == "" {
+					m.host = m.hostPrompt.Value()
+					m.hostPrompt.Blur()
+					m.userPrompt.Focus()
+					return m, hostEntered(m.host)
 				}
-				if msg.String() == "down" {
-					styles.PromptStyle = styles.PromptStyle.Margin(styles.PromptStyle.GetMarginTop()-1, styles.PromptStyle.GetMarginRight())
-				}
-				if msg.String() == "left" {
-					styles.PromptStyle = styles.PromptStyle.Margin(styles.PromptStyle.GetMarginTop(), styles.PromptStyle.GetMarginRight()+1)
-				}
-				if msg.String() == "right" {
-					styles.PromptStyle = styles.PromptStyle.Margin(styles.PromptStyle.GetMarginTop(), styles.PromptStyle.GetMarginRight()-1)
-				}
-
+				return m, nil
+			} else {
+				c, cmd := m.hostPrompt.Update(msg)
+				m.hostPrompt = c
+				return m, cmd
+			}
+		}
+		if m.userPrompt.Focused() {
+			if msg.String() == "esc" || msg.String() == "ctrl+c" {
+				return m, tea.Quit
 			} else if msg.String() == "enter" {
 				if m.username == "" {
-					m.username = m.prompt.Value()
-					m.prompt.Reset()
+					m.username = m.userPrompt.Value()
+					m.userPrompt.Reset()
 					m.channelsList.Focus()
 				}
 				return m, nil
 			} else {
-				c, cmd := m.prompt.Update(msg)
-				m.prompt = c
+				if len(m.userPrompt.Value()) > 20 {
+					return m, nil
+				}
+				c, cmd := m.userPrompt.Update(msg)
+				m.userPrompt = c
 				return m, cmd
 			}
 		}
@@ -182,8 +198,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	if m.host == "" {
+		return styles.PromptStyle.Render(m.hostPrompt.View())
+	}
 	if m.username == "" {
-		return styles.PromptStyle.Render(m.prompt.View())
+		return styles.PromptStyle.Render(m.userPrompt.View())
 	}
 
 	channelsList := styles.ChannelListStyle.Render(m.channelsList.View())

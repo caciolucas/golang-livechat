@@ -9,8 +9,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-func FetchMessages(channelID primitive.ObjectID) ([]models.Message, error) {
-	url := fmt.Sprintf("http://localhost:8080/channels/%s/messages", channelID.Hex())
+func FetchMessages(channelID primitive.ObjectID, host string) ([]models.Message, error) {
+	url := fmt.Sprintf("http://%s/channels/%s/messages", host, channelID.Hex())
 	response, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching messages: %w", err)
@@ -25,8 +25,8 @@ func FetchMessages(channelID primitive.ObjectID) ([]models.Message, error) {
 	return messages, nil
 }
 
-func FetchChannels() ([]models.Channel, error) {
-	response, err := http.Get("http://localhost:8080/channels")
+func FetchChannels(host string) ([]models.Channel, error) {
+	response, err := http.Get(fmt.Sprintf("http://%s/channels", host))
 	if err != nil {
 		return nil, fmt.Errorf("error fetching channels: %w", err)
 	}

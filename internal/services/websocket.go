@@ -9,8 +9,8 @@ import (
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-func ConnectChannelWS(channelId primitive.ObjectID) (*websocket.Conn, error) {
-	url := fmt.Sprintf("ws://localhost:8080/channels/%s/ws", channelId.Hex())
+func ConnectChannelWS(channelId primitive.ObjectID, host string) (*websocket.Conn, error) {
+	url := fmt.Sprintf("ws://%s/channels/%s/ws", host, channelId.Hex())
 
 	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {
