@@ -1,10 +1,6 @@
 package tui
 
 import (
-	// "fmt"
-	// "golang-chat/internal"
-	"fmt"
-	"golang-chat/internal"
 	"golang-chat/internal/models"
 	"golang-chat/internal/services"
 	channellist "golang-chat/internal/tui/components/channelList"
