@@ -69,14 +69,6 @@ func HandleWSConnections(c *gin.Context) {
 
 	livechat.Clients[conn] = true
 
-	channelId, err := primitive.ObjectIDFromHex(c.Param("id"))
-	if err != nil {
-		log.Printf("Invalid channel ID: %v", err)
-		return
-	}
-
-	fmt.Println("New client connected to channel:", channelId)
-
 	for {
 		mt, msg, err := conn.ReadMessage()
 
@@ -88,7 +80,6 @@ func HandleWSConnections(c *gin.Context) {
 		if mt == websocket.TextMessage {
 			var message models.Message
 			json.Unmarshal(msg, &message)
-			message.Channel = channelId
 			livechat.Broadcast <- message
 		}
 	}

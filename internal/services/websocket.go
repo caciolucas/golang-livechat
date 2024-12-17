@@ -6,11 +6,10 @@ import (
 	"golang-chat/internal/models"
 
 	"github.com/gorilla/websocket"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-func ConnectChannelWS(channelId primitive.ObjectID, host string) (*websocket.Conn, error) {
-	url := fmt.Sprintf("ws://%s/channels/%s/ws", host, channelId.Hex())
+func ConnectChannelWS(host string) (*websocket.Conn, error) {
+	url := fmt.Sprintf("ws://%s/channels/ws", host)
 
 	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
 	if err != nil {

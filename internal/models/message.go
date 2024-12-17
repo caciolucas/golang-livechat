@@ -14,5 +14,5 @@ type Message struct {
 }
 
 func (m Message) String() string {
-	return fmt.Sprintf("\"%s: %s\" (%s)", m.Username, m.Message, m.ID.Hex())
+	return fmt.Sprintf("\"%s: %s\" (%s) (Channel: %s)", m.Username, m.Message, m.ID.Hex(), m.Channel.Hex())
 }

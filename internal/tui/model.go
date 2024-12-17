@@ -3,6 +3,8 @@ package tui
 import (
 	// "fmt"
 	// "golang-chat/internal"
+	"fmt"
+	"golang-chat/internal"
 	"golang-chat/internal/models"
 	"golang-chat/internal/services"
 	channellist "golang-chat/internal/tui/components/channelList"
@@ -93,9 +95,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			log.Fatalf("Error fetching channels: %v", err)
 		}
 		m.channelsList.Channels = channels
+
+		conn, err := services.ConnectChannelWS(m.host)
+		if err != nil {
+			log.Fatalf("Error connecting to channel WS: %v", err)
+		}
+		m.wsConnection = conn
+
+		go listenChannelWSMessages(&m)
 		return m, nil
 
 	case NewMessageReceived:
+
 		if m.channelsList.SelectedChannel.ID == msg.Message.Channel {
 			m.channelsList.SelectedChannel.Messages = append(m.channelsList.SelectedChannel.Messages, msg.Message)
 			setViewportContent(m.channelsList.SelectedChannel, &m.chatHistory)
@@ -141,13 +152,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.channelsList.SelectedChannel = &m.channelsList.Channels[m.channelsList.Cursor()]
 				loadMessages(m.channelsList.SelectedChannel, &m)
 
-				conn, err := services.ConnectChannelWS(m.channelsList.SelectedChannel.ID, m.host)
-				if err != nil {
-					log.Fatalf("Error connecting to channel WS: %v", err)
-				}
-				m.wsConnection = conn
-
-				go listenChannelWSMessages(&m)
 				return m, readIncomingMessages(m.incomingMessages)
 
 			} else {
@@ -164,6 +168,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.host = m.hostPrompt.Value()
 					m.hostPrompt.Blur()
 					m.userPrompt.Focus()
+
 					return m, hostEntered(m.host)
 				}
 				return m, nil

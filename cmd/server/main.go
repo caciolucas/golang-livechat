@@ -12,7 +12,7 @@ func main() {
 
 	router.GET("/channels", api.ListChannels)
 	router.GET("/channels/:id/messages", api.ListMessages)
-	router.GET("/channels/:id/ws", api.HandleWSConnections)
+	router.GET("/channels/ws", api.HandleWSConnections)
 
 	go livechat.HandleMessages()
 	router.Run(":8080")
